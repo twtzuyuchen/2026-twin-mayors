@@ -1010,13 +1010,13 @@ function renderPoll(){
   {const q=S.oc.polls[S.oc.polls.length-1],so=CITY[S.oc.city];
    if(q)h+=`<div style="margin-top:10px;font-size:.85rem"><b>鄰市・${so.full}</b> <small>${esc(q.inst)} ${esc(q.date)}</small><div class="bars" style="height:18px"><span class="c" style="width:${q.c}%">${so.short.chiang} ${q.c.toFixed(0)}</span><span class="u" style="width:${q.u}%"></span><span class="s" style="width:${q.s}%">${so.short.shen} ${q.s.toFixed(0)}</span></div></div>`;}
   if(S.ti>=POLL_BAN) h+=`<p><small>民調已封關，之後不再發布。</small></p>`;
-  h+=`<svg id="spark" viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="民調走勢"></svg><small>各家民調中${sh.shen}減${sh.chiang}的差距走勢（零線以上為${sh.shen}領先）</small>`;
+  h+=`<svg id="spark" viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="民調走勢"></svg><small>各家民調中${sh[S.me]}減${sh[S.op]}的差距走勢（零線以上為${sh[S.me]}領先）</small>`;
   $("#pollbox").innerHTML=h;
-  drawSpark($("#spark"),S.polls.map(p=>p.s-p.c));
+  drawSpark($("#spark"),S.polls.map(p=>(p.s-p.c)*sgn(S.me)));
 }
 function drawSpark(svg,vals){
   if(!svg)return;
-  const w=300,h=90,lo=Math.min(-35,...vals),hi=Math.max(10,...vals);
+  const w=300,h=90,lo=Math.min(-10,...vals),hi=Math.max(10,...vals);
   const y=v=>h-4-(v-lo)/(hi-lo)*(h-8);
   let g=`<line x1="0" x2="${w}" y1="${y(0)}" y2="${y(0)}" stroke="currentColor" stroke-dasharray="3 3" opacity=".5"/>`;
   if(vals.length>1){const pts=vals.map((v,i)=>`${(i/(vals.length-1)*w).toFixed(1)},${y(v).toFixed(1)}`).join(" ");g+=`<polyline points="${pts}" fill="none" stroke="var(--side)" stroke-width="2.5"/>`;}
@@ -1551,7 +1551,7 @@ async function showEnd(){
   const rec={side:S.me,city:S.city,win:won,margin:myMargin,hist:S.hist,alt:S.alt,neg:S.neg,at:Date.now()};
   track(`end-${S.city}-${S.me}-${won?"win":"lose"}`,`結局：${CITY[S.city].full}${SF(S.me)}${won?"勝選":"落選"}`);
   const h=store.get("war-room-history")||[];h.unshift(rec);store.set("war-room-history",h.slice(0,20));
-  const traceGap=S.trace.map(v=>v);
+  const traceGap=S.trace.map(v=>v*sgn(S.me));
   $("#count").classList.add("hidden");$("#end").classList.remove("hidden");window.scrollTo(0,0);
   const verdict=won?(Math.abs(r.margin)<2?"險勝。":"勝選。"):(Math.abs(r.margin)<2?"惜敗。":"落選。");
   $("#end").innerHTML=`
@@ -1572,7 +1572,7 @@ async function showEnd(){
       <div><b>${S.tcDone?(S.tcDone===S.me?"你們觸發":"對手觸發"):"未觸發"}</b>重大事件「信任崩盤」${S.tcDone?"":`（你們最多滿足 ${(S.tcMax&&S.tcMax[S.me])||0}/5 個條件）`}</div>
     </div>
     <h2 style="margin-top:20px">隱藏的真實支持度</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin:.2em 0">這條線是整場選戰你看不到的${CITY[S.city].full}真實差距（${CITY[S.city].short.shen}減${CITY[S.city].short.chiang}，投票意願加權；零線以上為${CITY[S.city].short.shen}領先）。點是當時發布的民調。</p>
+    <p style="color:var(--muted);font-size:.9rem;margin:.2em 0">這條線是整場選戰你看不到的${CITY[S.city].full}真實差距（${CITY[S.city].short[S.me]}減${CITY[S.city].short[S.op]}，投票意願加權；零線以上為${CITY[S.city].short[S.me]}領先）。點是當時發布的民調。</p>
     <svg id="endchart" viewBox="0 0 600 160" style="width:100%;height:auto;display:block" role="img" aria-label="真實支持度與民調走勢"></svg>
     <h2 style="margin-top:20px">全體玩家成績</h2>
     <p style="color:var(--muted);font-size:.9rem;margin:.2em 0">這是遊戲成績，不是民調。只計入玩完全程的局。</p>
@@ -1592,11 +1592,11 @@ async function showEnd(){
 function drawEndChart(trace){
   const svg=$("#endchart"),w=600,h=160,n=TURNS.length;
   const pollPts=[];let pi=0; // map polls onto turns approximately by order
-  const vals=trace.concat(S.polls.map(p=>p.s-p.c));const lo=Math.min(-35,...vals),hi=Math.max(10,...vals);
+  const vals=trace.concat(S.polls.map(p=>(p.s-p.c)*sgn(S.me)));const lo=Math.min(-10,...vals),hi=Math.max(10,...vals);
   const x=i=>i/(n-1)*w,y=v=>h-6-(v-lo)/(hi-lo)*(h-12);
   let g=`<line x1="0" x2="${w}" y1="${y(0)}" y2="${y(0)}" stroke="currentColor" stroke-dasharray="4 4" opacity=".5"/>`;
   g+=`<polyline fill="none" stroke="var(--side)" stroke-width="3" points="${trace.map((v,i)=>`${x(i+1).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>`;
-  S.polls.forEach((p,i)=>{const ti=Math.round(2+i*(S.trace.length-2)/Math.max(1,S.polls.length-1));g+=`<circle cx="${x(Math.min(ti,n-1))}" cy="${y(p.s-p.c)}" r="3.5" fill="var(--note)" stroke="var(--ink)"/>`});
+  S.polls.forEach((p,i)=>{const ti=Math.round(2+i*(S.trace.length-2)/Math.max(1,S.polls.length-1));g+=`<circle cx="${x(Math.min(ti,n-1))}" cy="${y((p.s-p.c)*sgn(S.me))}" r="3.5" fill="var(--note)" stroke="var(--ink)"/>`});
   g+=`<text x="4" y="${y(0)-4}" font-size="11" fill="currentColor">零線</text>`;
   svg.innerHTML=g;
 }
