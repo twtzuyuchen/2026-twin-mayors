@@ -1526,16 +1526,35 @@ function runElection(){
   const result=calcResult();S.result=result;S.ocResult=withOther(()=>calcResult());
   const rows=result.rows,CN=CITY[S.city];
   $("#game").classList.add("hidden");$("#count").classList.remove("hidden");window.scrollTo(0,0);
-  let p=0;const tick=()=>{
-    p=Math.min(1,p+.07+R()*.04);
-    const cur=rows.map(r=>{const q=Math.min(1,p*r.rate);return {name:r.name,s:r.vs*q,c:r.vc*q,q}});
+  // 開票曲線：前段有來有往，中後段逐漸拉開（每區的開票速度與兩人票數回報先後各自不同）
+  const STEPS=[];{let q=0;while(q<1){q=Math.min(1,q+.055+R()*.03);STEPS.push(q);}}
+  const qOf=(p,r)=>1-Math.pow(1-p,r.rate);
+  const series=()=>STEPS.map(p=>{let s=0,c=0;rows.forEach(r=>{const q=qOf(p,r);s+=r.vs*Math.pow(q,r.es);c+=r.vc*Math.pow(q,r.ec);});return (s-c)/((s+c)||1)*100;});
+  let best=null,bestScore=-1e9;
+  for(let k=0;k<400;k++){
+    rows.forEach(r=>{r.rate=.7+R()*.8;r.es=.3+R()*1.9;r.ec=.3+R()*1.9;});
+    const m=series(),fin=m[m.length-1];
+    let sw=0;for(let i=1;i<m.length;i++)if(STEPS[i]<.65&&Math.sign(m[i])!==Math.sign(m[i-1]))sw++;
+    const early=m.filter((v,i)=>STEPS[i]>.1&&STEPS[i]<.5).map(Math.abs),earlyMax=early.length?Math.max(...early):0;
+    const late=m.filter((v,i)=>STEPS[i]>=.6);let mono=0;for(let i=1;i<late.length;i++)if(Math.abs(late[i])>=Math.abs(late[i-1])-.2&&Math.sign(late[i])===Math.sign(fin))mono++;
+    const score=Math.min(sw,3)*5-Math.max(0,earlyMax-4)*.8+mono*1.2-(Math.sign(m[0])===Math.sign(fin)?2:0);
+    if(score>bestScore){bestScore=score;best=rows.map(r=>[r.rate,r.es,r.ec]);}
+  }
+  rows.forEach((r,i)=>{[r.rate,r.es,r.ec]=best[i];});
+  let si=0,lastLead=0;const tick=()=>{
+    const p=STEPS[si++];
+    const cur=rows.map(r=>{const q=qOf(p,r);return {name:r.name,s:r.vs*Math.pow(q,r.es),c:r.vc*Math.pow(q,r.ec),q}});
     const cs=cur.reduce((a,r)=>a+r.s,0),cc=cur.reduce((a,r)=>a+r.c,0);
-    $("#count").innerHTML=`<h1>${CN.full}開票中・${Math.round(p*100)}%</h1>
+    const lead=Math.sign(cs-cc),flip=lastLead&&lead&&lead!==lastLead;if(lead)lastLead=lead;
+    const leader=cs>cc?CN.cand.shen:CN.cand.chiang,diff=Math.abs(cs-cc);
+    const status=p>=1?`${leader}勝出，差距 ${fmtN(diff)} 票。`:flip?`領先易主！現在換${leader}領先 ${fmtN(diff)} 票。`:`${leader}暫時領先 ${fmtN(diff)} 票。`;
+    $("#count").innerHTML=`<h1>${CN.full}開票中・${p>=1?100:Math.min(99,Math.round(p*100))}%</h1>
       <p class="hand" style="font-size:1.2rem">${p<.3?"第一批投開票所回報。":p<.7?"各區票數陸續湧入，競總裡沒人說話。":p<1?"剩下最後幾個大票倉。":"所有投開票所完成計票。"}</p>
+      <p style="font-weight:700;${flip?"color:var(--alert);font-size:1.15rem":""}">${status}</p>
       <div class="tally"><div class="big c">${CN.cand.chiang}<b>${fmtN(cc)}</b>${(cc/(cs+cc||1)*100).toFixed(1)}%</div><div class="big s">${CN.cand.shen}<b>${fmtN(cs)}</b>${(cs/(cs+cc||1)*100).toFixed(1)}%</div></div>
       <div class="tablewrap"><table class="dtab"><thead><tr><th>選區</th><th>開票進度</th><th>${CN.short.chiang}</th><th>${CN.short.shen}</th></tr></thead><tbody>${cur.map(r=>`<tr><td>${r.name}</td><td>${Math.round(r.q*100)}%</td><td>${fmtN(r.c)}</td><td>${fmtN(r.s)}</td></tr>`).join("")}</tbody></table></div>`;
-    if(p<1)setTimeout(tick,matchMedia("(prefers-reduced-motion: reduce)").matches?150:900);
-    else setTimeout(showEnd,1600);
+    if(si<STEPS.length)setTimeout(tick,matchMedia("(prefers-reduced-motion: reduce)").matches?150:(flip?1400:850));
+    else setTimeout(showEnd,1800);
   };
   tick();
 }
